@@ -1,0 +1,69 @@
+%description:
+Test packet printers
+
+%inifile: omnetpp.ini
+[General]
+#debugger-attach-on-startup=true
+#debugger-attach-on-error=true
+
+%includes:
+#include <stdio.h>
+#include <iostream>
+#include "inet/common/INETDefs.h"
+
+%global:
+
+namespace inet {
+
+class InetPacketBytesPrinter : public cMessagePrinter
+{
+  protected:
+    mutable bool showEncapsulatedPackets;
+
+  public:
+    InetPacketBytesPrinter() { showEncapsulatedPackets = true; }
+    virtual ~InetPacketBytesPrinter() {}
+    virtual int getScoreFor(cMessage *msg) const override;
+    virtual void printMessage(std::ostream& os, cMessage *msg) const override;
+};
+
+static const char INFO_SEPAR[] = " ";
+
+int InetPacketBytesPrinter::getScoreFor(cMessage *msg) const
+{
+    return msg->isPacket() ? 18 : 0;
+}
+
+void InetPacketBytesPrinter::printMessage(std::ostream& os, cMessage *msg) const
+{
+    std::string outs;
+
+    //reset mutable variables
+    showEncapsulatedPackets = true;
+
+    for (cPacket *pk = dynamic_cast<cPacket *>(msg); showEncapsulatedPackets && pk; pk = pk->getEncapsulatedPacket()) {
+        std::ostringstream out;
+        out << pk->getClassName() << ":" << pk->getByteLength() << " bytes";
+        if (outs.length())
+            out << INFO_SEPAR << outs;
+        outs = out.str();
+    }
+    os << outs;
+}
+
+static std::ostream& operator<<(std::ostream& os, cMessage *msg)
+{
+    InetPacketBytesPrinter printer;
+    printer.printMessage(os, msg);
+}
+
+} // namespace inet
+
+
+%activity:
+cMessage *msg = new cMessage();
+EV << msg;
+delete msg;
+
+%contains-regex: stdout
+(omnetpp::cMessage)
