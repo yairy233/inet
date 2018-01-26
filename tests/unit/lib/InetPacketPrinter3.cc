@@ -40,7 +40,11 @@ void InetPacketPrinter3::printMessage(std::ostream& os, cMessage *msg) const
     for (cPacket *pk = dynamic_cast<cPacket *>(msg); pk; pk = pk->getEncapsulatedPacket()) {
         std::ostringstream out;
         if (Packet *pck = dynamic_cast<Packet*>(pk)) {
-            out << formatPacket(pck);
+            auto protTag = pck->getTag<PacketProtocolTag>();
+            if (protTag != nullptr)
+                out << formatPacket(pck, *protTag->getProtocol());
+            else
+                out << formatPacket(pck);
         }
         else
             out << separ << pk->getClassName() << ":" << pk->getByteLength() << " bytes";
@@ -51,23 +55,60 @@ void InetPacketPrinter3::printMessage(std::ostream& os, cMessage *msg) const
     os << outs;
 }
 
-std::string InetPacketPrinter3::formatPacket2(Packet *pk, const Protocol& protocol) const
+std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol& protocol) const
 {
-    if (protocol == Protocol::ipv4) {
-        auto ipv4Header = pk->popHeader<Ipv4Header>(Chunk::PF_ALLOW_INCOMPETE | Chunk::PF_ALLOW_NULLPTR ...);
-        // masutt lehet egy trailert is le kell szedni
-        if (ipv4Header == nullptr)
-            ; // fallback to generic case
-        else {
-            if (ipv4Header->isIncomplete())
-                ;
-            else {
-                fromatIpv4Header(ipv4Header);
-                formatPacket2(pk, ipv4Header->getProtocol());
+    std::ostringstream os;
+
+    if (protocol == Protocol::ieee80211) {
+        // FIXME what about non-data frames like management frames?
+        const auto ieee80211MacHeader = pk->popHeader<ieee80211::Ieee80211DataHeader>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
+        const auto ieee80211MacTrailer = pk->popTrailer<ieee80211::Ieee80211MacTrailer>(B(4), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
+
+        if (ieee80211MacHeader == nullptr) {
+             // fallback to generic case or throw error?
+        } else {
+            if (ieee80211MacHeader->isIncomplete()) {
+                // TODO test for incorrect / improper presentation
+            } else {
+                os << formatIeee80211MacHeader(ieee80211MacHeader.get());
+                os << formatPacket(pk, Protocol::ieee8022); // LLC/SNAP header
+            }
+        }
+        os << formatIeee80211MacTrailer(ieee80211MacTrailer.get());
+    }
+    if (protocol == Protocol::ieee8022) {
+        // FIXME handle Llc header to, not just LlcWithSnap
+        const auto ieee8022LlcSnapHeader = pk->popHeader<Ieee8022LlcSnapHeader>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
+
+        if (ieee8022LlcSnapHeader == nullptr) {
+             // fallback to generic case or throw error?
+        } else {
+            if (ieee8022LlcSnapHeader->isIncomplete()) {
+                // TODO test for incorrect / improper presentation
+            } else {
+                os << format8022LlcHeader(ieee8022LlcSnapHeader.get());
+                os << formatPacket(pk, Protocol::ipv4); // FIXME get from the protocolId
             }
         }
     }
-    else ;//...
+    else if (protocol == Protocol::ipv4) {
+        const auto ipv4Header = pk->popHeader<Ipv4Header>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
+        // masutt lehet egy trailert is le kell szedni
+        if (ipv4Header == nullptr)
+            ; // fallback to generic case or throw error?
+        else {
+            if (ipv4Header->isIncomplete())
+                ; // TODO test for incorrect / improper presentation
+            else {
+                os << formatIpv4Header(ipv4Header.get());
+                os << formatPacket(pk); // FIXME specify protocol
+            }
+        }
+    }
+    else
+        os << formatPacket(pk);  // fall back to printing based on chunk types
+
+    return os.str();
 }
 
 std::string InetPacketPrinter3::formatPacket(Packet *pk) const
@@ -92,7 +133,7 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk) const
             destAddr = l3Header->getDestinationAddress();
 #ifdef WITH_IPv4
             if (const auto *ipv4Header = dynamic_cast<const Ipv4Header *>(chunk)) {
-                out << formatIpv4Packet(ipv4Header);
+                out << formatIpv4Header(ipv4Header);
             }
             else
 #endif // ifdef WITH_IPv4
@@ -114,20 +155,20 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk) const
 #endif // ifdef WITH_ETHERNET
 #ifdef WITH_TCP_COMMON
         else if (const auto tcpHeader = dynamic_cast<const tcp::TcpHeader *>(chunk)) {
-            out << formatTCPPacket(tcpHeader);
+            out << formatTCPHeader(tcpHeader);
         }
 #endif // ifdef WITH_TCP_COMMON
 #ifdef WITH_UDP
         else if (const auto udpHeader = dynamic_cast<const UdpHeader *>(chunk)) {
-            out << formatUDPPacket(udpHeader);
+            out << formatUDPHeader(udpHeader);
         }
 #endif // ifdef WITH_UDP
 #ifdef WITH_IPv4
         else if (const auto ipv4Header = dynamic_cast<const IcmpHeader *>(chunk)) {
-            out << formatICMPPacket(ipv4Header);
+            out << formatICMPHeader(ipv4Header);
         }
         else if (const auto arp = dynamic_cast<const ArpPacket *>(chunk)) {
-            out << formatARPPacket(arp);
+            out << formatARPHeader(arp);
         }
 #endif // ifdef WITH_IPv4
 #ifdef WITH_IEEE80211
@@ -135,12 +176,12 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk) const
             out << formatIeee80211PhyHeader(ieee80211PhyHdr);
         }
         else if (const auto ieee80211MacHdr = dynamic_cast<const ieee80211::Ieee80211MacHeader *>(chunk)) {
-            out << formatIeee80211Frame(ieee80211MacHdr);
+            out << formatIeee80211MacHeader(ieee80211MacHdr);
         }
 #endif // ifdef WITH_IEEE80211
 #ifdef WITH_RIP
         else if (const auto rip = dynamic_cast<const RipPacket *>(chunk)) {
-            out << formatRIPPacket(rip);
+            out << formatRIPheader(rip);
         }
 #endif // ifdef WITH_RIP
 #ifdef WITH_RADIO
@@ -178,7 +219,7 @@ std::string InetPacketPrinter3::format8022LlcHeader(const Ieee8022LlcHeader *chu
 }
 
 #ifdef WITH_IPv4
-std::string InetPacketPrinter3::formatIpv4Packet(const Ipv4Header *chunk) const
+std::string InetPacketPrinter3::formatIpv4Header(const Ipv4Header *chunk) const
 {
     std::ostringstream os;
     os << "[Ipv4 " << chunk->getSourceAddress() << ">" << chunk->getDestinationAddress();
@@ -190,38 +231,38 @@ std::string InetPacketPrinter3::formatIpv4Packet(const Ipv4Header *chunk) const
     return os.str();
 }
 
-std::string InetPacketPrinter3::formatARPPacket(const ArpPacket *packet) const
+std::string InetPacketPrinter3::formatARPHeader(const ArpPacket *chunk) const
 {
     std::ostringstream os;
-    switch (packet->getOpcode()) {
+    switch (chunk->getOpcode()) {
         case ARP_REQUEST:
-            os << "ARP req: " << packet->getDestIPAddress()
-               << "=? (s=" << packet->getSrcIPAddress() << "(" << packet->getSrcMACAddress() << "))";
+            os << "ARP req: " << chunk->getDestIPAddress()
+               << "=? (s=" << chunk->getSrcIPAddress() << "(" << chunk->getSrcMACAddress() << "))";
             break;
 
         case ARP_REPLY:
             os << "ARP reply: "
-               << packet->getSrcIPAddress() << "=" << packet->getSrcMACAddress()
-               << " (d=" << packet->getDestIPAddress() << "(" << packet->getDestMACAddress() << "))"
+               << chunk->getSrcIPAddress() << "=" << chunk->getSrcMACAddress()
+               << " (d=" << chunk->getDestIPAddress() << "(" << chunk->getDestMACAddress() << "))"
             ;
             break;
 
         case ARP_RARP_REQUEST:
-            os << "RARP req: " << packet->getDestMACAddress()
-               << "=? (s=" << packet->getSrcIPAddress() << "(" << packet->getSrcMACAddress() << "))";
+            os << "RARP req: " << chunk->getDestMACAddress()
+               << "=? (s=" << chunk->getSrcIPAddress() << "(" << chunk->getSrcMACAddress() << "))";
             break;
 
         case ARP_RARP_REPLY:
             os << "RARP reply: "
-               << packet->getSrcMACAddress() << "=" << packet->getSrcIPAddress()
-               << " (d=" << packet->getDestIPAddress() << "(" << packet->getDestMACAddress() << "))";
+               << chunk->getSrcMACAddress() << "=" << chunk->getSrcIPAddress()
+               << " (d=" << chunk->getDestIPAddress() << "(" << chunk->getDestMACAddress() << "))";
             break;
 
         default:
-            os << "ARP op=" << packet->getOpcode() << ": d=" << packet->getDestIPAddress()
-               << "(" << packet->getDestMACAddress()
-               << ") s=" << packet->getSrcIPAddress()
-               << "(" << packet->getSrcMACAddress() << ")";
+            os << "ARP op=" << chunk->getOpcode() << ": d=" << chunk->getDestIPAddress()
+               << "(" << chunk->getDestMACAddress()
+               << ") s=" << chunk->getSrcIPAddress()
+               << "(" << chunk->getSrcMACAddress() << ")";
             break;
     }
     return os.str();
@@ -237,13 +278,20 @@ std::string InetPacketPrinter3::formatIeee80211PhyHeader(const physicallayer::Ie
     return os.str();
 }
 
-std::string InetPacketPrinter3::formatIeee80211Frame(const ieee80211::Ieee80211MacHeader *packet) const
+std::string InetPacketPrinter3::formatIeee80211MacTrailer(const ieee80211::Ieee80211MacTrailer *chunk) const
+{
+    std::ostringstream os;
+    os << "[802.11 Trailer " << chunk->getChunkLength() << "]";
+    return os.str();
+}
+
+std::string InetPacketPrinter3::formatIeee80211MacHeader(const ieee80211::Ieee80211MacHeader *chunk) const
 {
     using namespace ieee80211;
 
     std::ostringstream os;
     os << "[802.11 ";
-    switch (packet->getType()) {
+    switch (chunk->getType()) {
         case ST_ASSOCIATIONREQUEST:
             os << "assocReq";
             break;
@@ -338,14 +386,14 @@ std::string InetPacketPrinter3::formatIeee80211Frame(const ieee80211::Ieee80211M
             break;
 
         default:
-            os << "type=" << packet->getType();
+            os << "type=" << chunk->getType();
             break;
     }
-    const auto twoAddressHeader = dynamic_cast<const Ieee80211TwoAddressHeader *>(packet);
+    const auto twoAddressHeader = dynamic_cast<const Ieee80211TwoAddressHeader *>(chunk);
     if (twoAddressHeader) {
-        os << " " << twoAddressHeader->getTransmitterAddress() << ">" << packet->getReceiverAddress();
+        os << " " << twoAddressHeader->getTransmitterAddress() << ">" << chunk->getReceiverAddress();
     } else {
-        os << " " << packet->getReceiverAddress();
+        os << " " << chunk->getReceiverAddress();
     }
     os << "]";
     return os.str();
@@ -353,33 +401,33 @@ std::string InetPacketPrinter3::formatIeee80211Frame(const ieee80211::Ieee80211M
 #endif // ifdef WITH_IEEE80211
 
 #ifdef WITH_TCP_COMMON
-std::string InetPacketPrinter3::formatTCPPacket(const tcp::TcpHeader *tcpSeg) const
+std::string InetPacketPrinter3::formatTCPHeader(const tcp::TcpHeader *chunk) const
 {
     std::ostringstream os;
-    os << "[TCP " << tcpSeg->getSrcPort() << ">" << tcpSeg->getDestPort() << " ";
+    os << "[TCP " << chunk->getSrcPort() << ">" << chunk->getDestPort() << " ";
     // flags
     bool flags = false;
-    if (tcpSeg->getUrgBit()) {
+    if (chunk->getUrgBit()) {
         flags = true;
         os << "U";
     }
-    if (tcpSeg->getAckBit()) {
+    if (chunk->getAckBit()) {
         flags = true;
         os << "A";
     }
-    if (tcpSeg->getPshBit()) {
+    if (chunk->getPshBit()) {
         flags = true;
         os << "P";
     }
-    if (tcpSeg->getRstBit()) {
+    if (chunk->getRstBit()) {
         flags = true;
         os << "R";
     }
-    if (tcpSeg->getSynBit()) {
+    if (chunk->getSynBit()) {
         flags = true;
         os << "S";
     }
-    if (tcpSeg->getFinBit()) {
+    if (chunk->getFinBit()) {
         flags = true;
         os << "F";
     }
@@ -388,18 +436,18 @@ std::string InetPacketPrinter3::formatTCPPacket(const tcp::TcpHeader *tcpSeg) co
     }
 
     // data-seqno
-    os << " seq=" << tcpSeg->getSequenceNo();
+    os << " seq=" << chunk->getSequenceNo();
 
     // ack
-    if (tcpSeg->getAckBit())
-        os << " ack=" << tcpSeg->getAckNo();
+    if (chunk->getAckBit())
+        os << " ack=" << chunk->getAckNo();
 
     // window
-    os << " win=" << tcpSeg->getWindow();
+    os << " win=" << chunk->getWindow();
 
     // urgent
-    if (tcpSeg->getUrgBit())
-        os << " urg=" << tcpSeg->getUrgentPointer();
+    if (chunk->getUrgBit())
+        os << " urg=" << chunk->getUrgentPointer();
 
     os << "]";
     return os.str();
@@ -407,10 +455,10 @@ std::string InetPacketPrinter3::formatTCPPacket(const tcp::TcpHeader *tcpSeg) co
 #endif // ifdef WITH_TCP_COMMON
 
 #ifdef WITH_UDP
-std::string InetPacketPrinter3::formatUDPPacket(const UdpHeader *udpPacket) const
+std::string InetPacketPrinter3::formatUDPHeader(const UdpHeader *chunk) const
 {
     std::ostringstream os;
-    os << "[UDP " << udpPacket->getSourcePort() << ">" << udpPacket->getDestinationPort() << "]";
+    os << "[UDP " << chunk->getSourcePort() << ">" << chunk->getDestinationPort() << "]";
     return os.str();
 }
 #endif // ifdef WITH_UDP
@@ -444,28 +492,28 @@ std::string InetPacketPrinter3::formatUDPPacket(const UdpHeader *udpPacket) cons
 //}
 
 #ifdef WITH_IPv4
-std::string InetPacketPrinter3::formatICMPPacket(const IcmpHeader *icmpHeader) const
+std::string InetPacketPrinter3::formatICMPHeader(const IcmpHeader *chunk) const
 {
     std::ostringstream os;
-    switch (icmpHeader->getType()) {
+    switch (chunk->getType()) {
         case ICMP_ECHO_REQUEST:
             os << "[ICMP req";
-            if (auto echo = dynamic_cast<const IcmpEchoRequest *>(icmpHeader))
+            if (auto echo = dynamic_cast<const IcmpEchoRequest *>(chunk))
                 os << " id=" << echo->getIdentifier() << " seq=" << echo->getSeqNumber() << "]";
             break;
 
         case ICMP_ECHO_REPLY:
             os << "[ICMP rep";
-            if (auto echo = dynamic_cast<const IcmpEchoReply *>(icmpHeader))
+            if (auto echo = dynamic_cast<const IcmpEchoReply *>(chunk))
                 os << " id=" << echo->getIdentifier() << " seq=" << echo->getSeqNumber() << "]";
             break;
 
         case ICMP_DESTINATION_UNREACHABLE:
-            os << "ICMP unreachable code=" << icmpHeader->getCode() << "]";
+            os << "ICMP unreachable code=" << chunk->getCode() << "]";
             break;
 
         default:
-            os << "[ICMP type=" << icmpHeader->getType() << " code=" << icmpHeader->getCode() << "]";
+            os << "[ICMP type=" << chunk->getType() << " code=" << chunk->getCode() << "]";
             break;
     }
     return os.str();
@@ -473,11 +521,11 @@ std::string InetPacketPrinter3::formatICMPPacket(const IcmpHeader *icmpHeader) c
 #endif // ifdef WITH_IPv4
 
 #ifdef WITH_RIP
-std::string InetPacketPrinter3::formatRIPPacket(const RipPacket *packet) const
+std::string InetPacketPrinter3::formatRIPheader(const RipPacket *chunk) const
 {
     std::ostringstream os;
     os << "RIP: ";
-    switch (packet->getCommand()) {
+    switch (chunk->getCommand()) {
         case RIP_REQUEST:
             os << "req ";
             break;
@@ -490,9 +538,9 @@ std::string InetPacketPrinter3::formatRIPPacket(const RipPacket *packet) const
             os << "unknown ";
             break;
     }
-    unsigned int size = packet->getEntryArraySize();
+    unsigned int size = chunk->getEntryArraySize();
     for (unsigned int i = 0; i < size; ++i) {
-        const RipEntry& entry = packet->getEntry(i);
+        const RipEntry& entry = chunk->getEntry(i);
         if (i > 0)
             os << "; ";
         if (i > 2) {
