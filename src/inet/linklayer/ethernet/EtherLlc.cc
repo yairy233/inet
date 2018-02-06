@@ -32,9 +32,6 @@ namespace inet {
 
 Define_Module(EtherLlc);
 
-simsignal_t EtherLlc::dsapSignal = registerSignal("dsap");
-simsignal_t EtherLlc::encapPkSignal = registerSignal("encapPk");
-simsignal_t EtherLlc::decapPkSignal = registerSignal("decapPk");
 simsignal_t EtherLlc::pauseSentSignal = registerSignal("pauseSent");
 
 void EtherLlc::initialize(int stage)
@@ -122,7 +119,6 @@ void EtherLlc::processPacketFromHigherLayer(Packet *packet)
         throw cRuntimeError("packet from higher layer (%d bytes) plus LLC header exceeds maximum Ethernet payload length (%d)", (int)(packet->getByteLength()), MAX_ETHERNET_DATA_BYTES);
 
     totalFromHigherLayer++;
-    emit(encapPkSignal, packet);
 
     // Creates MAC header information and encapsulates received higher layer data
     // with this information and transmits resultant frame to lower layer
@@ -147,6 +143,7 @@ void EtherLlc::processPacketFromHigherLayer(Packet *packet)
     EtherEncap::addPaddingAndFcs(packet, fcsMode);
     packet->addTagIfAbsent<PacketProtocolTag>()->setProtocol(&Protocol::ethernet);
 
+    emit(packetSentToLowerSignal, packet);
     send(packet, "lowerLayerOut");
 }
 
@@ -191,7 +188,6 @@ void EtherLlc::processFrameFromMAC(Packet *packet)
             "passing up contained packet `" << packet->getName() << "' to higher layer " << port << "\n";       //FIXME packet name printed twice
 
     totalFromMAC++;
-    emit(decapPkSignal, packet);
 
     // pass up to higher layer
     totalPassedUp++;
@@ -220,7 +216,6 @@ void EtherLlc::handleRegisterSAP(cMessage *msg)
 
     dsapToPort[dsap] = port;
     dsapsRegistered = dsapToPort.size();
-    emit(dsapSignal, 1L);
     delete msg;
 }
 
@@ -239,7 +234,6 @@ void EtherLlc::handleDeregisterSAP(cMessage *msg)
     // delete from table (don't care if it's not in there)
     dsapToPort.erase(dsapToPort.find(dsap));
     dsapsRegistered = dsapToPort.size();
-    emit(dsapSignal, -1L);
     delete msg;
 }
 

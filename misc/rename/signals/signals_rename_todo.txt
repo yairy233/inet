@@ -5,13 +5,10 @@
 ### "connState" -> "connState"      ### VoipStreamReceiver emit(1)/emit(-1)
 ### "connect" -> "connect"      ### TcpAppBase: connect: emit(1), close emit(-1)
 ### "datarate" -> "datarate"    ### RateControlBase: emit datarate
-### "decapPk" -> meaningless, use another or merge
 ### "delay" -> "delay"          ### VoipStreamReceiver: delay of received packet; common/queue/Delayer: generated delay (from parameter)
 ### "dropConfirm" -> "dropConfirm"      ### Ieee80211AgentSta: emit @enum(Ieee80211PrimConfirmCode)
-### "dsap" -> "dsap"
 ### "duplPk" -> "duplPk"            ### common/queue/OrdinalBasedDuplicator: emit generated duplicated cMessage
 ### "echoedPk" -> "echoedPk"        ### SctpClient, SctpPeer
-### "encapPk" -> meaningless, use another or merge
 ### "ipv4DataOnNonrpf" -> "ipv4DataOnNonrpf"          ### from Ipv4 to Pim
 ### "ipv4DataOnRpf" -> "ipv4DataOnRpf"          ### from Ipv4 to Pim
 ### "ipv4McastChange" -> "ipv4McastChange"          ### from Ipv4 to Igmpv3
