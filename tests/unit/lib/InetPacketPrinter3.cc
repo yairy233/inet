@@ -42,7 +42,7 @@ void InetPacketPrinter3::printMessage(std::ostream& os, cMessage *msg) const
         if (Packet *pck = dynamic_cast<Packet*>(pk)) {
             auto protTag = pck->getTag<PacketProtocolTag>();
             if (protTag != nullptr)
-                out << formatPacket(pck, *protTag->getProtocol());
+                out << formatPacket(pck, protTag->getProtocol());
             else
                 out << formatPacket(pck);
         }
@@ -55,11 +55,11 @@ void InetPacketPrinter3::printMessage(std::ostream& os, cMessage *msg) const
     os << outs;
 }
 
-std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol& protocol) const
+std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol *protocol) const
 {
     std::ostringstream os;
 
-    if (protocol == Protocol::ieee80211) {
+    if (*protocol == Protocol::ieee80211) {
         // FIXME what about non-data frames like management frames?
         const auto ieee80211MacHeader = pk->popHeader<ieee80211::Ieee80211DataHeader>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
         const auto ieee80211MacTrailer = pk->popTrailer<ieee80211::Ieee80211MacTrailer>(B(4), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
@@ -71,13 +71,13 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol& protoco
                 // TODO test for incorrect / improper presentation
             } else {
                 os << formatIeee80211MacHeader(ieee80211MacHeader.get());
-                os << formatPacket(pk, Protocol::ieee8022); // LLC/SNAP header
+                os << formatPacket(pk, &Protocol::ieee8022); // FIXME: for now LLC/SNAP header
             }
         }
         os << formatIeee80211MacTrailer(ieee80211MacTrailer.get());
     }
-    if (protocol == Protocol::ieee8022) {
-        // FIXME handle Llc header to, not just LlcWithSnap
+    if (*protocol == Protocol::ieee8022) {
+        // FIXME handle Llc header too, not just LlcWithSnap (see Ieee8022Llc::decapsulate)
         const auto ieee8022LlcSnapHeader = pk->popHeader<Ieee8022LlcSnapHeader>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
 
         if (ieee8022LlcSnapHeader == nullptr) {
@@ -87,13 +87,18 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol& protoco
                 // TODO test for incorrect / improper presentation
             } else {
                 os << format8022LlcHeader(ieee8022LlcSnapHeader.get());
-                os << formatPacket(pk, Protocol::ipv4); // FIXME get from the protocolId
+                os << formatPacket(pk, ProtocolGroup::ethertype.findProtocol(ieee8022LlcSnapHeader->getProtocolId()));
             }
         }
     }
-    else if (protocol == Protocol::ipv4) {
+    else if (*protocol == Protocol::ipv4) {
+        b dataLength = pk->getDataLength();
         const auto ipv4Header = pk->popHeader<Ipv4Header>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
-        // masutt lehet egy trailert is le kell szedni
+        b ipLength = B(ipv4Header->getTotalLengthField());
+        b padding = dataLength - ipLength;
+        if (padding > b(0))
+            pk->setTrailerPopOffset(pk->getTrailerPopOffset()-padding);
+
         if (ipv4Header == nullptr)
             ; // fallback to generic case or throw error?
         else {
@@ -101,7 +106,22 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol& protoco
                 ; // TODO test for incorrect / improper presentation
             else {
                 os << formatIpv4Header(ipv4Header.get());
-                os << formatPacket(pk); // FIXME specify protocol
+                os << formatPacket(pk, ipv4Header->getProtocol());
+            }
+        }
+        if (padding > b(0))
+            os << "[PADDING " << padding <<"]";
+    }
+    else if (*protocol == Protocol::icmpv4) {
+        const auto icmpHeader = pk->popHeader<IcmpHeader>(b(-1), Chunk::PF_ALLOW_INCOMPLETE | Chunk::PF_ALLOW_NULLPTR | Chunk::PF_ALLOW_IMPROPERLY_REPRESENTED | Chunk::PF_ALLOW_INCORRECT | Chunk::PF_ALLOW_SERIALIZATION);
+        if (icmpHeader == nullptr)
+            ; // fallback to generic case or throw error?
+        else {
+            if (icmpHeader->isIncomplete())
+                ; // TODO test for incorrect / improper presentation
+            else {
+                os << formatICMPHeader(icmpHeader.get());
+                os << formatPacket(pk);
             }
         }
     }
@@ -111,7 +131,7 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk, const Protocol& protoco
     return os.str();
 }
 
-std::string InetPacketPrinter3::formatPacket(Packet *pk) const
+std::string InetPacketPrinter3::formatPacket(Packet *packet) const
 {
     std::string outs;
 
@@ -120,8 +140,6 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk) const
     destAddr.reset();
 
     std::ostringstream out;
-    const char *separ = "";
-    auto packet = new Packet(pk->getName(), pk->peekData());
     while (auto chunkref = packet->popHeader(b(-1), Chunk::PF_ALLOW_NULLPTR)) {
         const auto chunk = chunkref.get();
         std::ostringstream out;
@@ -164,8 +182,8 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk) const
         }
 #endif // ifdef WITH_UDP
 #ifdef WITH_IPv4
-        else if (const auto ipv4Header = dynamic_cast<const IcmpHeader *>(chunk)) {
-            out << formatICMPHeader(ipv4Header);
+        else if (const auto icmpHeader = dynamic_cast<const IcmpHeader *>(chunk)) {
+            out << formatICMPHeader(icmpHeader);
         }
         else if (const auto arp = dynamic_cast<const ArpPacket *>(chunk)) {
             out << formatARPHeader(arp);
@@ -195,13 +213,8 @@ std::string InetPacketPrinter3::formatPacket(Packet *pk) const
         } else {
             out << "[?" << chunk->getChunkLength() << "]";
         }
-// reverse order?
-//        out << separ << outs;
-//        outs = out.str();
         outs += out.str();
-        separ = INFO_SEPAR;
     }
-    delete packet;
     return outs;
 }
 
@@ -462,34 +475,6 @@ std::string InetPacketPrinter3::formatUDPHeader(const UdpHeader *chunk) const
     return os.str();
 }
 #endif // ifdef WITH_UDP
-
-//std::string InetPacketPrinter3::formatPingPayload(const PingPayload *packet) const
-//{
-//    std::ostringstream os;
-//    os << "PING ";
-//#ifdef WITH_IPv4
-//    IcmpHeader *owner = dynamic_cast<IcmpHeader *>(packet->getOwner());
-//    if (owner) {
-//        switch (owner->getType()) {
-//            case ICMP_ECHO_REQUEST:
-//                os << "req ";
-//                break;
-//
-//            case ICMP_ECHO_REPLY:
-//                os << "reply ";
-//                break;
-//
-//            default:
-//                break;
-//        }
-//    }
-//#endif // ifdef WITH_IPv4
-//    os << srcAddr << " to " << destAddr
-//       << " (" << packet->getByteLength() << " bytes) id=" << packet->getId()
-//       << " seq=" << packet->getSeqNo();
-//
-//    return os.str();
-//}
 
 #ifdef WITH_IPv4
 std::string InetPacketPrinter3::formatICMPHeader(const IcmpHeader *chunk) const

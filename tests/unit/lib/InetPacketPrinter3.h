@@ -92,7 +92,7 @@ class INET_API InetPacketPrinter3 : public cMessagePrinter
 #ifdef WITH_UDP
     std::string formatUDPHeader(const UdpHeader *chunk) const;
 #endif // ifdef WITH_UDP
-    std::string formatPacket(Packet *pk, const Protocol& protocol) const;
+    std::string formatPacket(Packet *pk, const Protocol *protocol) const;
     std::string formatPacket(Packet *packet) const;
 
   public:
@@ -152,6 +152,11 @@ inline void test() {
     const auto& bchunk = makeShared<BytesChunk>(ping_packet_bytes, ping_packet_length);
     Packet msg("PING", bchunk);
     msg.ensureTag<PacketProtocolTag>()->setProtocol(&Protocol::ieee80211);
+    printer.printMessage(EV, &msg);
+
+/*
+    msg.setHeaderPopOffset(b(0));
+    msg.setTrailerPopOffset(msg.getTotalLength());
 
 //    const auto ofdmHeader = msg.popHeader<physicallayer::Ieee80211OfdmPhyHeader>(b(-1), Chunk::PF_ALLOW_SERIALIZATION);
 //    const auto ofdmTrailer = msg.popTrailer<BitCountChunk>(b(80), Chunk::PF_ALLOW_SERIALIZATION);
@@ -161,9 +166,6 @@ inline void test() {
     const auto ipv4Header = msg.popHeader<Ipv4Header>(b(-1), Chunk::PF_ALLOW_SERIALIZATION);
     const auto icmpHeader = msg.popHeader<IcmpEchoRequest>(b(-1), Chunk::PF_ALLOW_SERIALIZATION);
     const auto data = msg.peekData<ByteCountChunk>();
-//    EV << printer.formatIeee80211MacHeader(ieee80211Header.get());
-    msg.setHeaderPopOffset(b(0));
-    msg.setTrailerPopOffset(msg.getTotalLength());
 
     Packet msg2("PING2", data);
 //    msg2.ensureTag<PacketProtocolTag>()->setProtocol(&Protocol::ieee80211);
@@ -175,5 +177,7 @@ inline void test() {
     msg2.insertTrailer(ieee80211MacTrailer);
 //    msg2.insertTrailer(ofdmTrailer);
 
-    printer.printMessage(EV, &msg);
+//    printer.printMessage(EV, &msg2);
+
+*/
 }
