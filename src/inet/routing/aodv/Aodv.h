@@ -64,7 +64,7 @@ class INET_API Aodv : public cSimpleModule, public ILifecycle, public NetfilterB
       public:
         bool operator()(const RreqIdentifier& lhs, const RreqIdentifier& rhs) const
         {
-            return lhs.rreqID < rhs.rreqID;
+            return lhs.rreqID < rhs.rreqID || (lhs.rreqID == rhs.rreqID && lhs.originatorAddr < rhs.originatorAddr);
         }
     };
 
