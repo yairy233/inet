@@ -270,7 +270,7 @@ bool L3Address::operator<(const L3Address& other) const
     else {
         switch (type) {
             case L3Address::NONE:
-                throw cRuntimeError("Address contains no value");
+                return false;
 
             case L3Address::Ipv4:
                 return toIPv4() < other.toIPv4();
