@@ -46,7 +46,7 @@ module NodeBase like INetworkNode
         *.energySourceModule = default(energyStorageType != "" ? absPath(".energyStorage") : "");
         *.energyGeneratorModule = default(energyGeneratorType != "" ? absPath(".energyGenerator") : "");
 
-        @display("bgb=1300,700");
+        @display("bgb=1270,680");
     submodules:
         status: NodeStatus if hasStatus {
             parameters:
