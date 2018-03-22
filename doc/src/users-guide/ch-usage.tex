@@ -49,29 +49,35 @@ that communicate by message passing. Hosts, routers, switches and other
 network devices are represented by OMNeT++ compound modules. These compound
 modules are assembled from simple modules that represent protocols,
 applications, and other functional units. A network is again an OMNeT++
-compound module that contains host, router and other modules. The external
-interfaces of modules are described in NED files. NED files describe the
-parameters and gates (i.e. ports or connectors) of modules, and also the
-submodules and connections (i.e. netlist) of compound modules.
+compound module that contains host, router and other modules..
 
 Modules are organized into hierarchical \textit{packages} that directly map to
-folders under \ttt{src/}. Packages in
-INET are organized roughly according to OSI layers; the top packages
-include \ttt{inet.applications}, \ttt{inet.transportlayer},
-\ttt{inet.networklayer}, \ttt{inet.linklayer}, and \ttt{inet.physicallayer}. 
-Other packages are \ttt{inet.routing}, \ttt{inet.mobility}, \ttt{inet.power}, 
-\ttt{inet.environment}, and \ttt{inet.node}. These packages correspond to the
+folders under \ttt{src/}. Packages in INET are organized roughly according 
+to OSI layers. The top packages are:
+
+\begin{itemize}
+  \item \ttt{inet.applications}
+  \item \ttt{inet.transportlayer}
+  \item \ttt{inet.networklayer}
+  \item \ttt{inet.linklayer}
+  \item \ttt{inet.physicallayer}
+\end{itemize}
+
+Other packages are:
+
+\begin{itemize}
+  \item \ttt{inet.routing}
+  \item \ttt{inet.mobility}
+  \item \ttt{inet.power} 
+  \item \ttt{inet.environment},
+  \item \ttt{inet.node}. 
+\end{itemize}
+
+These packages correspond to the
 \ttt{src/applications/}, \ttt{src/transportlayer/}, etc. directories in the
 INET source tree. (The \ttt{src/inet/} directory corresponds to the \ttt{inet} 
-package, as defined by the \ttt{src/inet/package.ned} file.) Subdirectories
-within the top packages usually correspond to concrete protocols or protocol
-families. The implementations of simple modules are C++ classes with the same
-name, with the source files placed in the same directory as the NED file.
+package, as defined by the \ttt{src/inet/package.ned} file.)
 
-Protocol headers and packet formats are described in message definition
-files (msg files), which are translated into C++ classes by OMNeT++'s
-\textit{opp\_msgc} tool. The generated message classes subclass from OMNeT++'s
-\ttt{cPacket} or \ttt{cMessage} classes.
 
 \section{Setting up simulations}
 
