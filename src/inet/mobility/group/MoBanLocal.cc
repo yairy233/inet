@@ -76,10 +76,14 @@ void MoBanLocal::initialize(int stage)
 void MoBanLocal::setInitialPosition()
 {
     lastPosition = referencePosition;
+    startPosition = lastPosition;
+    startPositionTime = simTime();
 }
 
 void MoBanLocal::setTargetPosition()
 {
+    startPosition = lastPosition;
+    startPositionTime = simTime();
     if (speed != 0) {
         // find a uniformly random position within a sphere around the reference point
         double x = uniform(-radius, radius);
@@ -92,9 +96,9 @@ void MoBanLocal::setTargetPosition()
         }
 
         targetPosition = referencePosition + Coord(x, y, z);
-        Coord positionDelta = targetPosition - lastPosition;
+        Coord positionDelta = targetPosition - startPosition;
         double distance = positionDelta.length();
-        nextChange = simTime() + distance / speed;
+        nextChange = startPositionTime + distance / speed;
     }
     else {
         targetPosition = lastPosition;
@@ -119,11 +123,19 @@ void MoBanLocal::computeMaxSpeed()
 void MoBanLocal::setMoBANParameters(Coord referencePoint, double radius, double speed)
 {
     Enter_Method_Silent();
+
+    move();
+
     this->referencePosition = referencePoint;
     this->radius = radius;
     this->speed = speed;
+
+    targetPosition = lastPosition;
+    startPosition = targetPosition;
+    startPositionTime = simTime();
+    lastPosition = targetPosition;
     setTargetPosition();
-    lastVelocity = (targetPosition - lastPosition) / (nextChange - simTime()).dbl();
+    lastVelocity = (targetPosition - startPosition) / (nextChange - startPositionTime).dbl();
     scheduleUpdate();
 }
 

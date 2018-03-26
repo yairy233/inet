@@ -32,7 +32,7 @@ namespace visualizer {
 void VisualizerBase::initialize(int stage)
 {
     cSimpleModule::initialize(stage);
-    if (!hasGUI()) return;
+//    if (!hasGUI()) return;
     if (stage == INITSTAGE_LOCAL) {
         const char *path = par("visualizerTargetModule");
         visualizerTargetModule = getModuleByPath(path);

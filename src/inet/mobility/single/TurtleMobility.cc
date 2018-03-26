@@ -134,10 +134,10 @@ void TurtleMobility::executeStatement(cXMLElement *stmt)
             angle = getValue(angleAttr);
 
         if (xAttr)
-            targetPosition.x = lastPosition.x = getValue(xAttr);
+            targetPosition.x = lastPosition.x = startPosition.x = getValue(xAttr);
 
         if (yAttr)
-            targetPosition.y = lastPosition.y = getValue(yAttr);
+            targetPosition.y = lastPosition.y = startPosition.y = getValue(yAttr);
 
         if (speed <= 0)
             throw cRuntimeError("<set>: speed is negative or zero at %s", stmt->getSourceLocation());
@@ -226,7 +226,7 @@ void TurtleMobility::executeStatement(cXMLElement *stmt)
             targetPosition.y = getValue(yAttr);
 
         // travel to targetPosition at current speed, or get there in time t (ignoring current speed then)
-        double t = tAttr ? getValue(tAttr) : lastPosition.distance(targetPosition) / speed;
+        double t = tAttr ? getValue(tAttr) : startPosition.distance(targetPosition) / speed;
 
         if (t < 0)
             throw cRuntimeError("<wait>: time (attribute t) is negative at %s",

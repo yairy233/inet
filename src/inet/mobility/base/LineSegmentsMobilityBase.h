@@ -40,7 +40,17 @@ class INET_API LineSegmentsMobilityBase : public MovingMobilityBase
     /** @brief End position of current linear movement. */
     Coord targetPosition;
 
+    /** @brief The end simulation time of current linear movement stored in 'nextChange'. */
+
+    /** @brief Start position of current linear movement. */
+    Coord startPosition;
+
+    /** @brief The start simulation time of current linear movement. */
+    simtime_t startPositionTime;
+
   protected:
+    virtual void setInitialPosition() override;
+
     virtual void initializePosition() override;
 
     virtual void move() override;

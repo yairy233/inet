@@ -101,6 +101,7 @@ void MoBanCoordinator::initialize(int stage)
 
 
         lastPosition = selectDestination();
+        startPosition = lastPosition;
         publishToNodes();
         computeMaxSpeed();
     }

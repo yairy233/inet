@@ -282,6 +282,7 @@ void MobilityBase::handleIfOutside(BorderPolicy policy, Coord& targetPosition, C
             break;
 
         case PLACERANDOMLY:
+            raiseErrorIfOutside();
             placeRandomlyIfOutside(targetPosition);
             break;
 
